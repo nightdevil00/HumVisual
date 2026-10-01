@@ -1,0 +1,4 @@
+interface:
+  display_name: "HumVisual"
+  short_description: "Humanize prose and build visual explanations"
+  default_prompt: "Use $humvisual to rewrite this text in my voice without changing its facts, then build a page for the part that benefits from a diagram."

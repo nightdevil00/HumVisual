@@ -1,0 +1,12 @@
+# Node dependencies for the optional MCP server and PPTX exporter.
+node_modules/
+package-lock.json
+
+# Local scratch output from the quick renderer or the PPTX exporter.
+*.pptx
+
+# Editor and OS noise.
+.DS_Store
+*.swp
+.idea/
+.vscode/

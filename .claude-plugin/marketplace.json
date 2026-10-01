@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "humvisual",
+  "owner": {
+    "name": "Siqi Chen and Nico Bailon (merged)"
+  },
+  "description": "Install HumVisual as a Claude plugin.",
+  "plugins": [
+    {
+      "name": "humvisual",
+      "source": "./",
+      "description": "Rewrite AI-sounding prose so it reads like the writer without changing what it says, and turn systems, code changes, plans, data, and technical concepts into self-contained HTML visual explanations.",
+      "version": "1.0.0",
+      "license": "MIT",
+      "keywords": [
+        "writing",
+        "editing",
+        "humanize",
+        "prose",
+        "style",
+        "diagrams",
+        "html",
+        "visualization",
+        "slides",
+        "mermaid"
+      ]
+    }
+  ]
+}

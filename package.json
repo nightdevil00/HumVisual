@@ -1,0 +1,73 @@
+{
+  "name": "humvisual",
+  "version": "1.0.0",
+  "description": "Rewrite AI-sounding prose so it reads like the writer without changing what it says, and turn systems, code changes, plans, data, and technical concepts into self-contained HTML visual explanations.",
+  "scripts": {
+    "validate": "python3 scripts/validate-package.py",
+    "check:versions": "node scripts/check-versions.mjs"
+  },
+  "license": "MIT",
+  "keywords": [
+    "agent-skill",
+    "claude-code-plugin",
+    "claude-marketplace",
+    "opencode",
+    "cursor",
+    "codex",
+    "antigravity",
+    "mcp",
+    "model-context-protocol",
+    "writing",
+    "humanize",
+    "prose",
+    "diagrams",
+    "html",
+    "visualization",
+    "diff-review",
+    "plan-review",
+    "slides",
+    "pptx",
+    "powerpoint",
+    "mermaid"
+  ],
+  "files": [
+    "SKILL.md",
+    "references",
+    "templates",
+    "commands",
+    "quick",
+    "pptx",
+    "mcp",
+    "agents",
+    "scripts",
+    "examples",
+    "extension.ts",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "visual-explainer-mcp": "./mcp/server.mjs",
+    "visual-explainer-pptx": "./pptx/export.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "node-html-parser": "^9.0.1",
+    "pptxgenjs": "^4.0.1",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extension.ts"
+    ],
+    "skills": [
+      "./"
+    ],
+    "prompts": [
+      "./commands"
+    ]
+  }
+}

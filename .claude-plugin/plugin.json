@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "humvisual",
+  "description": "Rewrite AI-sounding prose so it reads like the writer without changing what it says, and turn systems, code changes, plans, data, and technical concepts into self-contained HTML visual explanations.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Siqi Chen and Nico Bailon (merged)"
+  },
+  "license": "MIT",
+  "keywords": [
+    "writing",
+    "editing",
+    "humanize",
+    "prose",
+    "style",
+    "diagrams",
+    "html",
+    "visualization",
+    "slides",
+    "mermaid"
+  ],
+  "skills": ["./"]
+}

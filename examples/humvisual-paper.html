@@ -1,0 +1,1378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HumVisual: one prompt for the words and the page</title>
+<meta name="description" content="A paper on the merged Humanizer and visual-explainer skill: what each half catches, what the merge changed, and the evidence behind both.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%2314171c'/%3E%3Cpath d='M14 46V18h7l6 14 6-14h7v28h-6V29l-5 12h-4l-5-12v17z' fill='%23e8eaec'/%3E%3Cpath d='M46 46V18h6v28z' fill='%232c4a8a'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ---------------------------------------------------------------
+   Palette: chalk and iron-gall ink, indigo lead, oxide and moss.
+   Light values on :root, dark values only in the media query.
+   --------------------------------------------------------------- */
+:root {
+  --font-body: 'Instrument Serif', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+
+  --bg: #e8eaec;
+  --surface: #f4f5f6;
+  --surface-elevated: #fbfbfc;
+  --surface-sunk: #dfe2e5;
+  --border: rgba(20, 23, 28, 0.14);
+  --border-bright: rgba(20, 23, 28, 0.28);
+  --rule: rgba(20, 23, 28, 0.05);
+  --text: #14171c;
+  --text-dim: #5a626c;
+  --accent: #2c4a8a;
+  --accent-dim: rgba(44, 74, 138, 0.09);
+  --oxide: #9c3b26;
+  --oxide-dim: rgba(156, 59, 38, 0.10);
+  --moss: #3d6b4c;
+  --moss-dim: rgba(61, 107, 76, 0.12);
+  --shadow: 0 1px 2px rgba(20, 23, 28, 0.06), 0 8px 24px rgba(20, 23, 28, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418;
+    --surface: #181c22;
+    --surface-elevated: #1e232a;
+    --surface-sunk: #0c0f12;
+    --border: rgba(233, 231, 226, 0.13);
+    --border-bright: rgba(233, 231, 226, 0.26);
+    --rule: rgba(233, 231, 226, 0.045);
+    --text: #e9e7e2;
+    --text-dim: #98a0aa;
+    --accent: #8ba4e8;
+    --accent-dim: rgba(139, 164, 232, 0.12);
+    --oxide: #d4795f;
+    --oxide-dim: rgba(212, 121, 95, 0.14);
+    --moss: #84b791;
+    --moss-dim: rgba(132, 183, 145, 0.14);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* ONE TYPE KNOB. Change this one value to rescale the page. */
+html { font-size: 17px; }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  /* faint ruled ground, 1px lines on a 34px pitch */
+  background-image: repeating-linear-gradient(
+    to bottom, transparent 0, transparent 33px,
+    var(--rule) 33px, var(--rule) 34px
+  );
+  background-position: 0 0;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.66;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 { text-wrap: balance; margin: 0; font-weight: 400; }
+h1 { font-size: 2.9rem; line-height: 1.06; letter-spacing: -0.01em; }
+h2 { font-size: 1.6rem; line-height: 1.2; }
+h3 { font-size: 1.15rem; line-height: 1.3; }
+p { margin: 0 0 1.1em; }
+a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+a:focus-visible,
+summary:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+code, pre, .label, .num { font-family: var(--font-mono); }
+code { font-size: 0.82em; }
+
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 2.5rem;
+  display: grid;
+  grid-template-columns: 178px minmax(0, 1fr);
+  gap: 0 3.5rem;
+}
+
+/* ---------- contents rail ---------- */
+.toc {
+  position: sticky;
+  top: 1.5rem;
+  align-self: start;
+  grid-row: 1 / -1;
+  padding: 1.5rem 0;
+  max-height: calc(100dvh - 3rem);
+  overflow-y: auto;
+}
+.toc__title {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+  padding-bottom: 0.7rem;
+  margin-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border-bright);
+}
+.toc a {
+  display: block;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--text-dim);
+  text-decoration: none;
+  padding: 0.3rem 0.5rem;
+  margin-bottom: 0.1rem;
+  border-left: 2px solid transparent;
+}
+.toc a:hover { color: var(--text); background: var(--accent-dim); }
+.toc a.active { color: var(--text); border-left-color: var(--accent); }
+
+.main { min-width: 0; padding-bottom: 5rem; }
+
+/* ---------- hero ---------- */
+.hero { padding: 3.5rem 0 2rem; border-bottom: 1px solid var(--border-bright); }
+.hero__kicker {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  margin-bottom: 1.4rem;
+}
+.hero__standfirst {
+  font-size: 1.3rem;
+  line-height: 1.5;
+  max-width: 46ch;
+  margin: 1.4rem 0 0;
+  color: var(--text);
+}
+.hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.6rem;
+  margin-top: 1.8rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+.hero__meta span { white-space: nowrap; }
+
+/* ---------- sections ---------- */
+.sec { padding-top: 3.5rem; scroll-margin-top: 1.5rem; }
+.sec__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.85rem;
+  padding-bottom: 0.7rem;
+  margin-bottom: 1.8rem;
+  border-bottom: 1px solid var(--border-bright);
+}
+.sec__num {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.prose { max-width: 68ch; }
+
+/* ---------- comparison figure ---------- */
+.demo { margin: 2rem 0; }
+.demo__col { min-width: 0; }
+.demo__col + .demo__col { margin-top: 1.6rem; }
+.demo__col pre { width: max-content; max-width: 100%; }
+.demo__note {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  margin: 0.7rem 0 0;
+  max-width: 74ch;
+}
+
+/* ---------- cards ---------- */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1.25rem 1.4rem;
+}
+.panel--sunk {
+  background: var(--surface-sunk);
+  box-shadow: inset 0 1px 3px rgba(20, 23, 28, 0.07);
+}
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+.grid-2 > * { min-width: 0; overflow-wrap: break-word; }
+
+.panel__label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-bottom: 0.75rem;
+}
+.panel__label--prose { color: var(--oxide); }
+.panel__label--visual { color: var(--accent); }
+.panel h3 { margin-bottom: 0.5rem; }
+.panel p:last-child, .panel ul:last-child { margin-bottom: 0; }
+.panel ul { margin: 0.6rem 0 0; padding-left: 1.1rem; }
+.panel li { margin-bottom: 0.35rem; }
+
+/* ---------- lists ---------- */
+.plain { list-style: none; padding: 0; margin: 0; }
+.plain li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.plain li:last-child { border-bottom: none; }
+
+/* ---------- tables ---------- */
+.table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; font-size: 0.875rem; line-height: 1.5; }
+caption {
+  caption-side: top;
+  text-align: left;
+  padding: 0.9rem 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+th {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  text-align: left;
+  padding: 0.7rem 1.1rem;
+  border-bottom: 2px solid var(--border-bright);
+  white-space: nowrap;
+}
+td { padding: 0.65rem 1.1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--accent-dim); }
+td.num, th.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+td .ref { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-dim); }
+tr.group td {
+  background: var(--surface-sunk);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+}
+.tight td, .tight th { padding: 0.5rem 1.1rem; }
+
+.chip {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  padding: 0.1rem 0.45rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.chip--strong { background: var(--oxide-dim); color: var(--oxide); }
+.chip--weak { background: var(--accent-dim); color: var(--accent); }
+
+/* ---------- code ---------- */
+pre {
+  margin: 0;
+  padding: 1rem 1.2rem;
+  overflow-x: auto;
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  tab-size: 2;
+}
+pre code { font-size: inherit; }
+.terminal {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--surface-sunk);
+}
+.terminal b { color: var(--text); font-weight: 500; }
+
+/* ---------- before / after ---------- */
+.diff {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.diff > * { min-width: 0; overflow-wrap: break-word; }
+.diff__head {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 0.6rem 1.1rem;
+}
+.diff__head--before { background: var(--oxide-dim); color: var(--oxide); border-bottom: 2px solid var(--oxide); }
+.diff__head--after { background: var(--moss-dim); color: var(--moss); border-bottom: 2px solid var(--moss); }
+.diff__body { padding: 1.1rem; font-size: 0.9375rem; line-height: 1.6; }
+.diff__body p:last-child { margin-bottom: 0; }
+
+.flag {
+  background: var(--oxide-dim);
+  box-shadow: inset 0 -1px 0 var(--oxide);
+  color: var(--text);
+}
+.flag__id {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--oxide);
+  vertical-align: super;
+  margin-left: 0.15em;
+}
+
+/* ---------- callouts ---------- */
+.callout {
+  --tone: var(--accent);
+  --tone-dim: var(--accent-dim);
+  padding: 1rem 1.2rem;
+  border-left: 3px solid var(--tone);
+  background: var(--tone-dim);
+  border-radius: 0 4px 4px 0;
+  margin: 1.6rem 0;
+  max-width: 68ch;
+}
+.callout--keep { --tone: var(--moss); --tone-dim: var(--moss-dim); }
+.callout--warn { --tone: var(--oxide); --tone-dim: var(--oxide-dim); }
+.callout__title {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--tone);
+  margin-bottom: 0.5rem;
+}
+.callout p:last-child, .callout ul:last-child { margin-bottom: 0; }
+.callout ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+
+/* ---------- figure ---------- */
+figure { margin: 2rem 0; }
+figure .frame {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: var(--shadow);
+  padding: 1.5rem 1rem;
+  overflow-x: auto;
+}
+figcaption {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  margin-top: 0.7rem;
+  max-width: 74ch;
+}
+figcaption .claim { color: var(--text); }
+svg.flow { display: block; width: 100%; min-width: 620px; height: auto; }
+.flow-box { fill: var(--surface-elevated); stroke: var(--border-bright); stroke-width: 1; }
+.flow-box--accent { fill: var(--accent-dim); stroke: var(--accent); }
+.flow-box--prose { fill: var(--oxide-dim); stroke: var(--oxide); }
+.flow-title { font-family: var(--font-body); font-size: 15px; fill: var(--text); }
+.flow-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; fill: var(--text-dim); text-transform: uppercase; }
+.flow-edge { stroke: var(--border-bright); stroke-width: 1.25; fill: none; }
+.flow-edge--note { stroke-dasharray: 4 4; }
+.flow-arrow { fill: var(--border-bright); }
+.flow-arrow--note { fill: var(--text-dim); }
+.flow-note { font-family: var(--font-mono); font-size: 10.5px; fill: var(--text-dim); }
+
+/* ---------- swatches ---------- */
+.swatches { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.9rem; }
+.swatch { min-width: 0; }
+.swatch__chip {
+  height: 3.1rem;
+  border-radius: 3px;
+  border: 1px solid var(--border-bright);
+  margin-bottom: 0.45rem;
+}
+.swatch__name { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text); }
+.swatch__hex { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-dim); }
+
+/* ---------- details ---------- */
+details {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin: 1.25rem 0;
+}
+summary {
+  cursor: pointer;
+  padding: 0.85rem 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+summary:hover { color: var(--text); }
+details > .table-wrap { border: none; border-top: 1px solid var(--border); border-radius: 0; box-shadow: none; }
+
+footer {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-bright);
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+}
+footer p { max-width: 68ch; }
+
+@media (max-width: 1000px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); padding: 0 1.5rem; }
+  .toc {
+    grid-row: auto;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+    margin: 0 -1.5rem;
+    padding: 0.7rem 1.5rem;
+    max-height: none;
+    overflow-x: auto;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .toc::-webkit-scrollbar { display: none; }
+  .toc__title { display: none; }
+  .toc a {
+    white-space: nowrap;
+    flex-shrink: 0;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+    padding: 0.3rem 0.55rem;
+  }
+  .toc a.active { border-bottom-color: var(--accent); background: var(--accent-dim); }
+  .sec { scroll-margin-top: 3.2rem; }
+  h1 { font-size: 2.2rem; }
+  .grid-2, .diff { grid-template-columns: minmax(0, 1fr); }
+  .swatches { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero { padding-top: 2rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="toc" id="toc" aria-label="Contents">
+    <div class="toc__title">Contents</div>
+    <a href="#s1">Two jobs</a>
+    <a href="#s2">The difference</a>
+    <a href="#s3">Why the prose half</a>
+    <a href="#s4">Pipeline</a>
+    <a href="#s5">Design rules</a>
+    <a href="#s6">Merge decisions</a>
+    <a href="#s7">The folder</a>
+    <a href="#s8">Install and use</a>
+    <a href="#s9">Credits</a>
+  </nav>
+
+  <div class="main">
+
+    <header class="hero">
+      <div class="hero__kicker">HumVisual 1.0.0 &middot; skill paper</div>
+      <h1>One prompt for the words and the page</h1>
+      <p class="hero__standfirst">
+        Two agent skills did separate jobs. One rewrote prose that sounded generated. The other turned
+        terminal output into HTML pages. This paper describes the merge, shows what each half catches that the
+        other misses, and gives the measurements behind the result.
+      </p>
+      <div class="hero__meta">
+        <span>merged from Humanizer 3.1.0</span>
+        <span>merged from visual-explainer 0.11.0</span>
+        <span>26 prose patterns</span>
+        <span>38 files, plus this page</span>
+        <span>1 October 2026</span>
+      </div>
+    </header>
+
+    <p class="prose" style="margin-top:2.5rem">
+      <strong>Abstract.</strong> HumVisual is a single agent skill with two entry jobs and one set of evidence
+      rules. The prose job rewrites text so it reads like the writer who meant it, without changing what it says.
+      The visual job builds self-contained HTML pages for systems, diffs, plans, data, and decks. A request that
+      needs both runs the prose pass first, because page copy written before the prose pass keeps the tells the
+      prose rules exist to remove. The merged package holds 49,723 words across 38 files, of which 4,517 words
+      load on every use and the rest load on demand. This page is the 39th file.
+    </p>
+
+    <!-- ============================================================ -->
+    <section class="sec" id="s1">
+      <div class="sec__head">
+        <span class="sec__num">01</span>
+        <h2>Two jobs behind one prompt</h2>
+      </div>
+
+      <div class="prose">
+        <p>
+          The routing table is the first thing the merged prompt does with a request. It decides which job runs,
+          and it decides that before any HTML or any edit.
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="tight">
+            <caption>Routing, as written in SKILL.md</caption>
+            <thead>
+              <tr>
+                <th scope="col">The request</th>
+                <th scope="col">Job</th>
+                <th scope="col">Where the output goes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>&ldquo;Humanize this&rdquo;, a draft, a commit message, a pull request body</td>
+                <td>Prose</td>
+                <td>The chat, or the named file</td>
+              </tr>
+              <tr>
+                <td>A diagram, an architecture, a diff review, a plan review, a recap, a table, a deck</td>
+                <td>Visual</td>
+                <td><code>~/.agent/diagrams/&lt;name&gt;.html</code>, opened in a browser</td>
+              </tr>
+              <tr>
+                <td>A page that needs words on it</td>
+                <td>Both, prose first</td>
+                <td>Page copy written to the prose rules</td>
+              </tr>
+              <tr>
+                <td>Ask for AI-readable output or a source brief</td>
+                <td>Both</td>
+                <td><code>&lt;name&gt;.md</code> beside <code>&lt;name&gt;.html</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top:1.6rem">
+        <div class="panel">
+          <span class="panel__label panel__label--prose">Prose job</span>
+          <h3>Rewrite the text</h3>
+          <p>
+            Marks 26 tells, drafts a rewrite that keeps every supported claim, then checks the draft against the
+            source before writing the final version.
+          </p>
+          <ul>
+            <li>Catches staging, rule-bound rhythm, inflated significance, chat residue</li>
+            <li>Returns a draft, the patterns still present, and the final text</li>
+            <li>In file mode touches prose only, and leaves code, paths, and frontmatter alone</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <span class="panel__label panel__label--visual">Visual job</span>
+          <h3>Build the page</h3>
+          <p>
+            Picks a representation that fits the content, plans a palette and type roles before writing HTML, and
+            runs a delivery checklist before the file ships.
+          </p>
+          <ul>
+            <li>Catches the terminal dump, the unlabelled arrow, the generic dark violet template</li>
+            <li>Returns one complete HTML document plus a short chat summary</li>
+            <li>Uses Mermaid for connected flows, tables for matrices, cards for architecture</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="sec" id="s2">
+      <div class="sec__head">
+        <span class="sec__num">02</span>
+        <h2>The difference, on the same content</h2>
+      </div>
+
+      <div class="prose">
+        <p>
+          The clearest way to see what the visual half buys is to take one small artifact and put both renderings
+          next to each other. Below are four representative requests, one that routes to the prose job and three
+          that route to the visual job. The first version is what a chat window gives you at 47 columns. The
+          second is the same four rows as a semantic table.
+        </p>
+      </div>
+
+      <figure class="demo">
+        <div class="demo__col">
+          <pre class="terminal" aria-label="The four rows as monospace text in a narrow chat window, wrapped at 47 columns"><code> Request         | Job    | Output
+ ----------------+--------+--------------------
+ &ldquo;Humanize this  | Prose  | the chat, or
+ draft&rdquo;          | Prose  | the file
+ &ldquo;Diagram the    | Visual | ~/.agent/diagrams/
+ auth flow&rdquo;      | Visual | &lt;name&gt;.html
+ &ldquo;Review this    | Visual | ~/.agent/diagrams/
+ diff as a page&rdquo; | Visual | &lt;name&gt;.html
+ &ldquo;Four or more   | Visual | ~/.agent/diagrams/
+ rows&rdquo;           | Visual | &lt;name&gt;.html</code></pre>
+          <p class="demo__note">
+            In a chat window: ten lines of monospace text, six of them continuation rows. The reader has to work
+            out which words belong to which cell before the table means anything.
+          </p>
+        </div>
+        <div class="demo__col">
+          <div class="table-wrap">
+            <table class="tight">
+              <caption>The same four rows as a page</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Request</th>
+                  <th scope="col">Job</th>
+                  <th scope="col">Output</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>&ldquo;Humanize this draft&rdquo;</td><td>Prose</td><td>the chat, or the file</td></tr>
+                <tr><td>&ldquo;Diagram the auth flow&rdquo;</td><td>Visual</td><td><code>~/.agent/diagrams/&lt;name&gt;.html</code></td></tr>
+                <tr><td>&ldquo;Review this diff as a page&rdquo;</td><td>Visual</td><td><code>~/.agent/diagrams/&lt;name&gt;.html</code></td></tr>
+                <tr><td>&ldquo;Four or more rows&rdquo;</td><td>Visual</td><td><code>~/.agent/diagrams/&lt;name&gt;.html</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="demo__note">
+            As a page: four rows, one line each, separators intact. The threshold is written into the skill, four
+            or more rows or three or more columns, so this renders as HTML and the chat keeps a short summary.
+          </p>
+        </div>
+      </figure>
+
+      <h3 style="margin:2.6rem 0 1rem">The same difference in prose</h3>
+
+      <div class="prose">
+        <p>
+          The prose half has an equivalent failure. It is not that the words are wrong. It is that a sentence
+          spends its weight on signalling importance instead of adding a fact. The four highlighted spans below
+          are the ones a rewrite removes on sight, and each carries the pattern number that removes it.
+        </p>
+      </div>
+
+      <div class="diff">
+        <div class="diff__head diff__head--before">Before, generated</div>
+        <div class="diff__head diff__head--after">After, rewritten</div>
+        <div class="diff__body">
+          <p>
+            <span class="flag">I'm thrilled to announce that shared drafts are finally here! 🚀<span class="flag__id">§16&nbsp;§22</span></span>
+            For months, our own team was drowning in files named final_v7.docx, and we knew there had to be a
+            better way. Now two people can edit the same doc at once, with every change appearing live for both
+            of them.
+            <span class="flag">It's not just a feature; it's a whole new way to collaborate.<span class="flag__id">§1</span></span>
+            Comments stay anchored to the exact sentence they reference, even as the text around them evolves.
+            <span class="flag">And the best part?<span class="flag__id">§4</span></span> It's available today on
+            every plan, completely free.
+            <span class="flag">Let that sink in.<span class="flag__id">§2</span></span>
+          </p>
+        </div>
+        <div class="diff__body">
+          <p>
+            Shared drafts are out today. For months our own team passed around files named final_v7.docx, so we
+            built a way for two people to edit the same doc at once, with each person's changes showing up live
+            for the other. Comments stay pinned to the sentence they're about, even when the text around them
+            changes. It's free on every plan.
+          </p>
+        </div>
+      </div>
+
+      <div class="callout callout--keep">
+        <div class="callout__title">What the rewrite kept</div>
+        <p>
+          The specific detail carries the writer's voice, so it survives every pattern check: the file named
+          final_v7.docx, comments that stay pinned to their sentence while the text around them changes, and the
+          price. Removing tells is half the job. A rewrite that also strips the human fingerprints has failed at
+          the second half.
+        </p>
+      </div>
+
+      <div class="prose" style="margin-top:1.8rem">
+        <p>
+          Read the two panels together and the division of labour is plain. The prose job fixes the sentence. The
+          visual job fixes the medium, and it also fixes the words a page carries, because a button that says
+          &ldquo;Submit&rdquo; when it writes a file is the same defect wearing a different costume.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="sec" id="s3">
+      <div class="sec__head">
+        <span class="sec__num">03</span>
+        <h2>Why the prose half needs a reason, not a list</h2>
+      </div>
+
+      <div class="prose">
+        <p>
+          A language model writes whatever is most likely to come next, so by default it makes the choice that
+          fits the widest range of readers and subjects. A person writes for one reader and one subject, so their
+          choices are uneven and specific. Every one of the 26 patterns is a form of that default choice:
+          staging that adds weight instead of a fact, rhythm and formatting applied by rule, ordinary facts
+          dressed as turning points, leftovers from the chat, and replies that re-explain context the reader
+          already has.
+        </p>
+        <p>
+          The reason matters more than the list, because word habits change with every model release while
+          structural habits persist. A skill that only banned words would rot. A skill that explains the default
+          can be updated with one line per release.
+        </p>
+      </div>
+
+      <div class="callout">
+        <div class="callout__title">The bar for acting</div>
+        <p>
+          A tell counts in proportion to how rarely a careful writer would make it on purpose. Patterns 1 to 5
+          justify an edit on one sighting. Anything marked <em>weak alone</em> needs company from other tells in
+          the same passage first.
+        </p>
+      </div>
+
+      <div class="table-wrap" style="margin-top:1.6rem">
+        <div class="table-scroll">
+          <table class="tight">
+            <caption>The six strongest patterns, with the group they belong to</caption>
+            <thead>
+              <tr>
+                <th scope="col" class="num">#</th>
+                <th scope="col">Pattern</th>
+                <th scope="col">Watch for</th>
+                <th scope="col">The fix</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="group"><td colspan="4">A &middot; Staging instead of stating</td></tr>
+              <tr>
+                <td class="num">1</td>
+                <td>Not X but Y</td>
+                <td>&ldquo;It's not just X, it's Y&rdquo;; the same contrast split across two sentences</td>
+                <td>State the point directly</td>
+              </tr>
+              <tr>
+                <td class="num">2</td>
+                <td>One-line closers and dramatic fragments</td>
+                <td>&ldquo;That is the real win.&rdquo;; &ldquo;Let that sink in.&rdquo;; rows of fragments</td>
+                <td>Cut a closer that repeats; merge fragments into a claim</td>
+              </tr>
+              <tr>
+                <td class="num">3</td>
+                <td>Sayings that sound deep</td>
+                <td>&ldquo;At its core&rdquo;; &ldquo;what really matters&rdquo;; &ldquo;X is the language of Y&rdquo;</td>
+                <td>Replace the saying with the specific claim</td>
+              </tr>
+              <tr>
+                <td class="num">4</td>
+                <td>Staged run-up before the point</td>
+                <td>&ldquo;Let's dive in&rdquo;; &ldquo;Here's what you need to know&rdquo;; &ldquo;Honestly?&rdquo;</td>
+                <td>Remove the run-up, make the point</td>
+              </tr>
+              <tr>
+                <td class="num">5</td>
+                <td>Arguing with no one</td>
+                <td>&ldquo;This isn't mainly about&rdquo;; &ldquo;A tempting approach would be&rdquo;</td>
+                <td>Remove the objection nobody raised</td>
+              </tr>
+              <tr class="group"><td colspan="4">B &middot; Rhythm by rule</td></tr>
+              <tr>
+                <td class="num">6</td>
+                <td>Forced triads</td>
+                <td>&ldquo;innovation, inspiration, and insights&rdquo;; three examples plus a lesson</td>
+                <td>Use the count the meaning needs</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <details>
+        <summary>The other 20 patterns</summary>
+        <div class="table-wrap">
+          <div class="table-scroll">
+            <table class="tight">
+              <caption>Patterns 7 to 26, ordered by strength and frequency</caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="num">#</th>
+                  <th scope="col">Pattern</th>
+                  <th scope="col">Strength</th>
+                  <th scope="col">The fix</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td class="num">7</td><td>Repeated sentence openings</td><td><span class="chip chip--weak">weak alone</span></td><td>Merge, change the subject, or start with the action</td></tr>
+                <tr><td class="num">8</td><td>Dashes as the universal connector</td><td><span class="chip chip--weak">weak alone</span></td><td>Use a period, comma, colon, or parentheses</td></tr>
+                <tr><td class="num">9</td><td>Stacked qualifiers</td><td><span class="chip chip--weak">weak alone</span></td><td>Keep only the qualifiers the source supports</td></tr>
+                <tr><td class="num">10</td><td>Hyphenated pairs everywhere</td><td><span class="chip chip--weak">weak alone</span></td><td>Keep the hyphen before the noun, or where the dictionary has one</td></tr>
+                <tr><td class="num">11</td><td>Passive voice and missing subjects</td><td><span class="chip chip--weak">weak alone</span></td><td>Name the actor when it helps</td></tr>
+                <tr><td class="num">12</td><td>Overused AI words</td><td><span class="chip chip--strong">act on sight</span></td><td>Use plain words</td></tr>
+                <tr><td class="num">13</td><td>Inflated significance</td><td><span class="chip chip--strong">act on sight</span></td><td>Keep the fact, drop the significance, end on the last concrete fact</td></tr>
+                <tr><td class="num">14</td><td>Vague connection or association</td><td><span class="chip chip--strong">act on sight</span></td><td>State the relationship the source gives</td></tr>
+                <tr><td class="num">15</td><td>Shallow -ing riders</td><td><span class="chip chip--strong">act on sight</span></td><td>Keep only what the source supports</td></tr>
+                <tr><td class="num">16</td><td>Sales language</td><td><span class="chip chip--strong">act on sight</span></td><td>State what the thing is</td></tr>
+                <tr><td class="num">17</td><td>Borrowed authority</td><td><span class="chip chip--strong">act on sight</span></td><td>Name a real source and what it said, or cut the claim</td></tr>
+                <tr><td class="num">18</td><td>Avoiding is, are, and has</td><td><span class="chip chip--strong">act on sight</span></td><td>Use is, are, and has</td></tr>
+                <tr><td class="num">19</td><td>Bold as decoration</td><td><span class="chip chip--strong">act on sight</span></td><td>Remove it; turn a labeled list into prose when the labels carry nothing</td></tr>
+                <tr><td class="num">20</td><td>Decorative headings</td><td><span class="chip chip--strong">act on sight</span></td><td>Sentence case, no emoji, a heading that names its section</td></tr>
+                <tr><td class="num">21</td><td>Curly quotation marks</td><td><span class="chip chip--weak">weak alone</span></td><td>Straight quotes where the writer or format uses them</td></tr>
+                <tr><td class="num">22</td><td>Chatbot residue</td><td><span class="chip chip--strong">act on sight</span></td><td>Remove the wrapper, keep the content</td></tr>
+                <tr><td class="num">23</td><td>Knowledge-limit disclaimers and guesses</td><td><span class="chip chip--strong">act on sight</span></td><td>State what the source shows, or remove the sentence</td></tr>
+                <tr><td class="num">24</td><td>A heading repeated in the first sentence</td><td><span class="chip chip--strong">act on sight</span></td><td>Let the heading do the work</td></tr>
+                <tr><td class="num">25</td><td>Writing about the document instead of its subject</td><td><span class="chip chip--strong">act on sight</span></td><td>Describe the subject, not the document</td></tr>
+                <tr><td class="num">26</td><td>Re-explaining what the reader knows</td><td><span class="chip chip--strong">act on sight</span></td><td>Lead with the decision</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <div class="callout callout--warn">
+        <div class="callout__title">Pattern 8 applies to this skill's own prompt</div>
+        <p>
+          The merged <code>SKILL.md</code> contains no em dash, and the package validator fails the build if one
+          appears. The file you are reading follows the same rule, which is why its section markers are numbers
+          and rules rather than dashes.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="sec" id="s4">
+      <div class="sec__head">
+        <span class="sec__num">04</span>
+        <h2>One evidence bar, two jobs</h2>
+      </div>
+
+      <div class="prose">
+        <p>
+          The merge rests on a single rule that both halves already enforced. Every fact, name, number, date,
+          quote, citation, and code reference comes from the source, the user, or a command that was actually run.
+          A gap gets a question or a shorter sentence, never a plausible guess.
+        </p>
+      </div>
+
+      <figure role="img" aria-label="Flow diagram: a request is routed to either the prose job or the visual job, both feed the shared evidence bar, and when a request needs both the prose pass runs before the page is built.">
+        <div class="frame">
+          <svg class="flow" viewBox="0 0 900 250" xmlns="http://www.w3.org/2000/svg">
+            <!-- request -->
+            <rect class="flow-box" x="8" y="96" width="132" height="58" rx="4"/>
+            <text class="flow-label" x="20" y="118">Request</text>
+            <text class="flow-title" x="20" y="140">Draft or system</text>
+            <!-- route -->
+            <rect class="flow-box flow-box--accent" x="212" y="96" width="118" height="58" rx="4"/>
+            <text class="flow-label" x="224" y="118">Route</text>
+            <text class="flow-title" x="224" y="140">Shape of ask</text>
+            <!-- prose job -->
+            <rect class="flow-box flow-box--prose" x="372" y="26" width="196" height="64" rx="4"/>
+            <text class="flow-label" x="384" y="48">Prose job</text>
+            <text class="flow-title" x="384" y="70">Mark, draft, check,</text>
+            <text class="flow-title" x="384" y="86">write the final text</text>
+            <!-- visual job -->
+            <rect class="flow-box flow-box--accent" x="372" y="164" width="196" height="64" rx="4"/>
+            <text class="flow-label" x="384" y="186">Visual job</text>
+            <text class="flow-title" x="384" y="208">Tokens, figure, table,</text>
+            <text class="flow-title" x="384" y="224">delivery checklist</text>
+            <!-- shared bar -->
+            <rect class="flow-box" x="648" y="96" width="180" height="58" rx="4"/>
+            <text class="flow-label" x="660" y="118">Shared bar</text>
+            <text class="flow-title" x="660" y="140">Claim check</text>
+            <!-- edges -->
+            <path class="flow-edge" d="M140 125 H212"/>
+            <path class="flow-arrow" d="M212 125 l-6 -4 v8 z"/>
+            <text class="flow-note" x="146" y="86">classify</text>
+            <path class="flow-edge" d="M330 112 C348 112 352 62 372 58"/>
+            <path class="flow-arrow" d="M372 58 l-6 -3 l1 7 z"/>
+            <text class="flow-note" x="330" y="70">rewrite</text>
+            <path class="flow-edge" d="M330 138 C348 138 352 190 372 194"/>
+            <path class="flow-arrow" d="M372 194 l-6 -3 l1 7 z"/>
+            <text class="flow-note" x="332" y="214">render</text>
+            <path class="flow-edge" d="M568 58 C612 58 616 118 648 122"/>
+            <path class="flow-arrow" d="M648 122 l-7 -2 l2 7 z"/>
+            <text class="flow-note" x="590" y="72">claims</text>
+            <path class="flow-edge" d="M568 196 C612 196 616 132 648 128"/>
+            <path class="flow-arrow" d="M648 128 l-7 -2 l2 7 z"/>
+            <text class="flow-note" x="592" y="204">checklist</text>
+            <!-- ordering note between the two jobs -->
+            <path class="flow-edge flow-edge--note" d="M470 90 V156"/>
+            <path class="flow-arrow flow-arrow--note" d="M470 164 l-4 -6 h8 z"/>
+            <text class="flow-note" x="480" y="120">when both:</text>
+            <text class="flow-note" x="480" y="134">prose, then page</text>
+          </svg>
+        </div>
+        <figcaption>
+          <span class="claim">Both halves reject the same fabrication, so the order is fixed.</span> When a request
+          needs both, the prose pass runs first, and page copy written afterwards inherits the rewrite.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="sec" id="s5">
+      <div class="sec__head">
+        <span class="sec__num">05</span>
+        <h2>The visual rules, and how this page follows them</h2>
+      </div>
+
+      <div class="prose">
+        <p>
+          The visual half plans before it writes. This page's plan is four named values, a type pair, and one
+          sentence of layout: a letterpress memo on cool chalk, a 68ch measure of serif in a wide field, a
+          contents rail on the left, and the data set in ruled tables. The rules below are the ones that changed
+          the output, and each one is visible somewhere on this page.
+        </p>
+      </div>
+
+      <h3 style="margin:2rem 0 1rem">Palette</h3>
+      <p style="font-size:.8125rem;color:var(--text-dim);max-width:74ch;margin-bottom:1rem">
+        Light values sit on <code>:root</code>, and the dark scheme redefines tokens only. Components are styled
+        through tokens, so the media query never touches a component rule. Neutrals carry a trace of the indigo
+        accent rather than sitting at pure mid-grey. The ruled ground behind the text uses one more token, a
+        low-alpha version of the ink, so the page gains texture without adding a hue.
+      </p>
+
+      <div class="table-wrap" style="margin-bottom:1.2rem">
+        <div class="table-scroll">
+          <table class="tight">
+            <caption>Named values, light scheme then dark scheme</caption>
+            <thead>
+              <tr>
+                <th scope="col">Role</th>
+                <th scope="col">Token</th>
+                <th scope="col" class="num">Light</th>
+                <th scope="col" class="num">Dark</th>
+                <th scope="col">Used for</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Chalk</td><td><code>--bg</code></td><td class="num">#e8eaec</td><td class="num">#111418</td><td>Page ground, ruled on a 34px pitch</td></tr>
+              <tr><td>Sheet</td><td><code>--surface</code></td><td class="num">#f4f5f6</td><td class="num">#181c22</td><td>Panels, tables, figure frames</td></tr>
+              <tr><td>Iron-gall ink</td><td><code>--text</code></td><td class="num">#14171c</td><td class="num">#e9e7e2</td><td>Reading text and headings</td></tr>
+              <tr><td>Faded ink</td><td><code>--text-dim</code></td><td class="num">#5a626c</td><td class="num">#98a0aa</td><td>Labels, captions, secondary text</td></tr>
+              <tr><td>Indigo lead</td><td><code>--accent</code></td><td class="num">#2c4a8a</td><td class="num">#8ba4e8</td><td>Links, section numbers, the accent column</td></tr>
+              <tr><td>Oxide</td><td><code>--oxide</code></td><td class="num">#9c3b26</td><td class="num">#d4795f</td><td>Removed text, warnings, the before panel</td></tr>
+              <tr><td>Moss</td><td><code>--moss</code></td><td class="num">#3d6b4c</td><td class="num">#84b791</td><td>Kept text, the after panel</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="swatches">
+        <div class="swatch">
+          <div class="swatch__chip" style="background:#e8eaec"></div>
+          <div class="swatch__name">chalk</div>
+          <div class="swatch__hex">#e8eaec</div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:#2c4a8a"></div>
+          <div class="swatch__name">indigo lead</div>
+          <div class="swatch__hex">#2c4a8a</div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:#9c3b26"></div>
+          <div class="swatch__name">oxide</div>
+          <div class="swatch__hex">#9c3b26</div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:#3d6b4c"></div>
+          <div class="swatch__name">moss</div>
+          <div class="swatch__hex">#3d6b4c</div>
+        </div>
+      </div>
+
+      <h3 style="margin:2.4rem 0 1rem">Type</h3>
+      <div class="prose">
+        <p>
+          One font pair, one root knob. Every ordinary size below is in rem against a 17px root, so a single line
+          rescales the page. Instrument Serif carries the reading text and JetBrains Mono carries labels, numbers,
+          and code. Both load with fallbacks, and every weight in use is requested.
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="tight">
+            <caption>The type scale in use on this page</caption>
+            <thead>
+              <tr>
+                <th scope="col">Role</th>
+                <th scope="col" class="num">Size</th>
+                <th scope="col" class="num">At a 17px root</th>
+                <th scope="col">Face</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Page title</td><td class="num">2.9rem</td><td class="num">49.3px</td><td>Instrument Serif</td></tr>
+              <tr><td>Section head</td><td class="num">1.6rem</td><td class="num">27.2px</td><td>Instrument Serif</td></tr>
+              <tr><td>Reading text</td><td class="num">1.0625rem</td><td class="num">18.1px</td><td>Instrument Serif, 68ch measure</td></tr>
+              <tr><td>Table and panel text</td><td class="num">0.875rem</td><td class="num">14.9px</td><td>Instrument Serif</td></tr>
+              <tr><td>Code</td><td class="num">0.8125rem</td><td class="num">13.8px</td><td>JetBrains Mono</td></tr>
+              <tr><td>Labels</td><td class="num">0.6875rem</td><td class="num">11.7px</td><td>JetBrains Mono, uppercase, tracked</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <h3 style="margin:2.4rem 0 1rem">The invariants that shaped this page</h3>
+      <div class="grid-2">
+        <div class="panel panel--sunk">
+          <span class="panel__label panel__label--visual">Structure and access</span>
+          <ul class="plain">
+            <li>Semantic elements throughout: real <code>&lt;table&gt;</code>, <code>&lt;figure&gt;</code>, <code>&lt;figcaption&gt;</code>, <code>&lt;details&gt;</code>, heading order from one to three</li>
+            <li>The figure carries <code>role="img"</code> and an <code>aria-label</code> on the shell, not on the SVG</li>
+            <li>Wide tables sit in a scroll container, and every grid child sets <code>min-width: 0</code></li>
+            <li>Focus rings on links, the disclosure control, and every scroll target</li>
+          </ul>
+        </div>
+        <div class="panel panel--sunk">
+          <span class="panel__label panel__label--visual">Rhetoric and restraint</span>
+          <ul class="plain">
+            <li>One claim per figure, stated in the caption, with the mechanism drawn rather than named</li>
+            <li>Every arrow in the flow diagram carries a label</li>
+            <li>Depth used twice: the hero rule and the elevated table frames. The rest is flat or recessed</li>
+            <li>No motion beyond hover states, and none of it under <code>prefers-reduced-motion</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="callout__title">One deliberate omission</div>
+        <p>
+          No Mermaid. The diagram above is hand-written SVG so the page stays self-contained with no network
+          dependency beyond the two web fonts, and so the arrows carry the exact labels the caption claims. The
+          skill still routes connected flows to Mermaid, where zoom, pan, and expand earn their keep on a diagram
+          with fifteen nodes rather than five.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="sec" id="s6">
+      <div class="sec__head">
+        <span class="sec__num">06</span>
+        <h2>What the merge changed</h2>
+      </div>
+
+      <div class="prose">
+        <p>
+          Merging two packages means choosing one layout and one version story. The pattern numbers stayed put,
+          because every section reference in both prompts depends on them, and the optional utilities kept their
+          upstream names so host configurations keep working.
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table>
+            <caption>Decisions, with the reason each one was made</caption>
+            <thead>
+              <tr>
+                <th scope="col">Decision</th>
+                <th scope="col">Before</th>
+                <th scope="col">After</th>
+                <th scope="col">Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Skill location</td>
+                <td><span class="ref">plugins/visual-explainer/SKILL.md</span></td>
+                <td><span class="ref">SKILL.md at the root</span></td>
+                <td>One folder loads in every agent, and every <code>./references/</code> path resolves from the root</td>
+              </tr>
+              <tr>
+                <td>Prose patterns</td>
+                <td><span class="ref">inline in Humanizer's SKILL.md</span></td>
+                <td><span class="ref">references/prose-patterns.md</span></td>
+                <td>Progressive disclosure: the index loads always, the watch lists and examples load on the first rewrite</td>
+              </tr>
+              <tr>
+                <td>Pattern numbering</td>
+                <td>1 to 26</td>
+                <td>1 to 26</td>
+                <td>Unchanged, so every <code>§</code> reference in both prompts still resolves</td>
+              </tr>
+              <tr>
+                <td>Utility names</td>
+                <td><span class="ref">visual_explainer, visual-explainer-mcp, visual-explainer-pptx</span></td>
+                <td><span class="ref">unchanged</span></td>
+                <td>Renaming would break MCP host configs and Pi installs for no gain</td>
+              </tr>
+              <tr>
+                <td>Project config</td>
+                <td><span class="ref">visual-explainer.config.md</span></td>
+                <td><span class="ref">humvisual.config.md</span></td>
+                <td>The file seeds the page palette and font pair, so it carries the skill's name</td>
+              </tr>
+              <tr>
+                <td>Prose entry point</td>
+                <td>Description trigger only</td>
+                <td><span class="ref">/humanize</span> plus the seven visual commands</td>
+                <td>One command shape for both halves</td>
+              </tr>
+              <tr>
+                <td>Version story</td>
+                <td>3.1.0 and 0.11.0</td>
+                <td>1.0.0 across six files</td>
+                <td>The validator fails on any drift between the prompt, the changelog, and the manifests</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="callout callout--keep">
+        <div class="callout__title">The validator is the merge's regression test</div>
+        <p>
+          <code>scripts/validate-package.py</code> runs with the standard library alone. It checks the version in
+          six places, one root <code>SKILL.md</code>, pattern numbering in the reference, pattern names in the
+          README table, section reference targets in the prompt and the commands, the 5,500 word budget, the
+          absence of em dashes in the prompt, every file the prompt routes to, command frontmatter, the package
+          binaries, and both upstream copyrights. Nine of these checks were verified by breaking each one on a
+          scratch copy.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="sec" id="s7">
+      <div class="sec__head">
+        <span class="sec__num">07</span>
+        <h2>What is in the folder</h2>
+      </div>
+
+      <div class="prose">
+        <p>
+          The package is 38 files and 49,723 words, not counting this page. Four and a half thousand of those
+          words load on every use; the rest load when a task needs them, which is what keeps the prompt inside
+          its word budget while carrying two jobs.
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table>
+            <caption>Measured inventory by group</caption>
+            <thead>
+              <tr>
+                <th scope="col">Group</th>
+                <th scope="col" class="num">Files</th>
+                <th scope="col" class="num">Words</th>
+                <th scope="col">Load</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><code>SKILL.md</code></td><td class="num">1</td><td class="num">4,517</td><td>Every use</td></tr>
+              <tr><td><code>references/</code>, six files</td><td class="num">6</td><td class="num">21,310</td><td>On the task that needs them</td></tr>
+              <tr><td><code>templates/</code>, four reference pages</td><td class="num">4</td><td class="num">9,184</td><td>When writing HTML</td></tr>
+              <tr><td><code>commands/</code>, eight entries</td><td class="num">8</td><td class="num">1,955</td><td>When a command runs</td></tr>
+              <tr><td><code>quick/</code>, schema and renderer</td><td class="num">4</td><td class="num">2,734</td><td>Only in quick mode</td></tr>
+              <tr><td><code>pptx/</code>, <code>mcp/</code>, extension</td><td class="num">5</td><td class="num">5,398</td><td>Optional integrations</td></tr>
+              <tr><td>Docs: README, changelog, guide, license, agent yaml</td><td class="num">5</td><td class="num">3,395</td><td>Human readers</td></tr>
+              <tr><td>Manifests and the validator</td><td class="num">5</td><td class="num">1,230</td><td>Install and release time</td></tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>Total</td>
+                <td class="num">38</td>
+                <td class="num">49,723</td>
+                <td>&nbsp;</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="margin-top:1.4rem">
+        <div class="table-scroll">
+          <table class="tight">
+            <caption>The prompt and its references, by size</caption>
+            <thead>
+              <tr>
+                <th scope="col">File</th>
+                <th scope="col" class="num">Lines</th>
+                <th scope="col" class="num">Words</th>
+                <th scope="col">Read it when</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><code>SKILL.md</code></td><td class="num">419</td><td class="num">4,517</td><td>Every use</td></tr>
+              <tr><td><code>references/slide-patterns.md</code></td><td class="num">1,304</td><td class="num">5,777</td><td>A deck is requested</td></tr>
+              <tr><td><code>references/css-patterns.md</code></td><td class="num">1,842</td><td class="num">5,672</td><td>Writing any HTML</td></tr>
+              <tr><td><code>references/prose-patterns.md</code></td><td class="num">350</td><td class="num">4,480</td><td>Before the first rewrite</td></tr>
+              <tr><td><code>references/libraries.md</code></td><td class="num">612</td><td class="num">2,931</td><td>Mermaid, Chart.js, or fonts</td></tr>
+              <tr><td><code>references/themes.md</code></td><td class="num">372</td><td class="num">1,610</td><td>A palette is named or a picker is asked for</td></tr>
+              <tr><td><code>references/responsive-nav.md</code></td><td class="num">222</td><td class="num">840</td><td>A page has four or more sections</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="sec" id="s8">
+      <div class="sec__head">
+        <span class="sec__num">08</span>
+        <h2>Install and use</h2>
+      </div>
+
+      <div class="prose">
+        <p>
+          There is no build step. The skill is Markdown, and the only hard requirement for the visual half is a
+          browser.
+        </p>
+      </div>
+
+      <pre aria-label="Install commands"><code># Claude Code, as a marketplace plugin
+/plugin marketplace add &lt;owner&gt;/humvisual
+/plugin install humvisual@humvisual
+
+# Any agent with the Skills CLI
+npx skills add ./HumVisual --global --agent '*'
+
+# Any agent with a skills folder: copy the folder in and read SKILL.md
+cp -r ./HumVisual ~/.config/opencode/skill/humvisual</code></pre>
+
+      <h3 style="margin:2.2rem 0 1rem">Asking for either job</h3>
+      <pre aria-label="Example requests"><code>Humanize this: [paste text]
+Humanize the prose in docs/launch-post.md
+Draw a diagram of our authentication flow
+Review this diff on this branch as a page
+Turn this plan into slides</code></pre>
+
+      <div class="prose" style="margin-top:1.6rem">
+        <p>
+          Add <code>--quick</code> to <code>/generate-web-diagram</code>, <code>/diff-review</code>,
+          <code>/plan-review</code>, or <code>/project-recap</code> and the agent emits a compact JSON spec
+          instead of hand-written HTML. The bundled renderer validates the spec and writes the page. Visual output
+          lands in <code>~/.agent/diagrams/</code> and opens in a browser.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="sec" id="s9">
+      <div class="sec__head">
+        <span class="sec__num">09</span>
+        <h2>Credits and license</h2>
+      </div>
+
+      <div class="prose">
+        <p>
+          HumVisual merges two MIT skills and keeps both copyrights in its <code>LICENSE</code>.
+        </p>
+        <ul>
+          <li>
+            Humanizer 3.1.0 by Siqi Chen, built on Wikipedia's
+            <a href="https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing">Signs of AI writing</a>,
+            maintained by WikiProject AI Cleanup.
+          </li>
+          <li>
+            visual-explainer 0.11.0 by Nico Bailon, which borrows ideas from
+            <a href="https://github.com/anthropics/skills">Anthropic's frontend-design skill</a> and
+            <a href="https://github.com/Dammyjay93/interface-design">interface-design</a>.
+          </li>
+        </ul>
+        <p>
+          The 26 patterns and the visual invariants were left as their authors wrote them. The routing table, the
+          shared evidence rules, the ordering rule for requests that need both halves, the package layout, and the
+          validator are new.
+        </p>
+      </div>
+    </section>
+
+    <footer>
+      <p>
+        HumVisual 1.0.0, generated 1 October 2026. This page is the example artifact of the merged skill: prose
+        written to the 26 patterns, layout written to the visual invariants. It holds no scripts beyond a
+        contents scroll spy, and it loads nothing but two web fonts.
+      </p>
+    </footer>
+
+  </div>
+</div>
+
+<script>
+(function() {
+  var toc = document.getElementById('toc');
+  if (!toc) return;
+  var links = toc.querySelectorAll('a');
+  var sections = [];
+
+  links.forEach(function(link) {
+    var id = link.getAttribute('href').slice(1);
+    var el = document.getElementById(id);
+    if (el) sections.push({ id: id, el: el, link: link });
+  });
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (!entry.isIntersecting) return;
+      links.forEach(function(l) { l.classList.remove('active'); });
+      var match = sections.find(function(s) { return s.el === entry.target; });
+      if (!match) return;
+      match.link.classList.add('active');
+      if (window.innerWidth <= 1000) {
+        match.link.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px' });
+
+  sections.forEach(function(s) { observer.observe(s.el); });
+
+  links.forEach(function(link) {
+    link.addEventListener('click', function(event) {
+      var id = link.getAttribute('href').slice(1);
+      var el = document.getElementById(id);
+      if (!el) return;
+      event.preventDefault();
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Chrome treats each file:// document as a unique null origin, so a
+      // URL-carrying history call throws. The scroll already happened.
+      try { history.replaceState(null, '', '#' + id); } catch (error) { /* hash stays */ }
+    });
+  });
+})();
+</script>
+</body>
+</html>
